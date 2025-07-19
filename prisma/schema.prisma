@@ -1,0 +1,265 @@
+// Melid Zirve - Restaurant Management System Database Schema
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// User Roles Enum
+enum UserRole {
+  PATRON
+  MANAGER
+  ADMIN
+  CHEF
+  CASHIER
+  KITCHEN1
+  KITCHEN2
+}
+
+// Section Types Enum
+enum SectionType {
+  NOSTAJI
+  RESTORAN
+  CAFE
+}
+
+// Table Status Enum
+enum TableStatus {
+  EMPTY
+  OCCUPIED
+  RESERVED
+  CLEANING
+}
+
+// Order Status Enum
+enum OrderStatus {
+  NEW
+  PREPARING
+  READY
+  SERVED
+  PAID
+  CANCELLED
+}
+
+// Kitchen Assignment Enum
+enum KitchenType {
+  KITCHEN1
+  KITCHEN2
+}
+
+// Revision Status Enum
+enum RevisionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Payment Type Enum
+enum PaymentType {
+  CASH
+  POS
+  CARD
+}
+
+// Users Table
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String
+  fullName  String
+  role      UserRole
+  sectionId String?  // Şeflerin hangi bölümde çalıştığı
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  section          Section? @relation(fields: [sectionId], references: [id])
+  orders           Order[]
+  revisionRequests OrderRevision[] @relation("RevisionRequester")
+  revisionReviews  OrderRevision[] @relation("RevisionReviewer")
+  payments         Payment[]
+  categoryPermissions ChefCategoryPermission[]
+
+  @@map("users")
+}
+
+// Sections Table
+model Section {
+  id          String      @id @default(cuid())
+  name        SectionType @unique
+  description String?
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  tables Table[]
+  users  User[]  // Şefler bu bölümde çalışır
+
+  @@map("sections")
+}
+
+// Tables Table
+model Table {
+  id        String      @id @default(cuid())
+  number    Int
+  sectionId String
+  status    TableStatus @default(EMPTY)
+  capacity  Int         @default(4)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  // Relations
+  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  orders  Order[]
+
+  @@unique([sectionId, number])
+  @@map("tables")
+}
+
+// Categories Table
+model Category {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  products Product[]
+  chefPermissions ChefCategoryPermission[]
+
+  @@map("categories")
+}
+
+// Products Table
+model Product {
+  id               String      @id @default(cuid())
+  name             String      @unique
+  description      String?
+  price            Float
+  categoryId       String
+  kitchenAssignment KitchenType
+  isActive         Boolean     @default(true)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  // Relations
+  category   Category    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+
+  @@map("products")
+}
+
+// Orders Table
+model Order {
+  id          String      @id @default(cuid())
+  tableId     String
+  creatorId   String
+  status      OrderStatus @default(NEW)
+  totalAmount Float       @default(0)
+  notes       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  table     Table           @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  creator   User            @relation(fields: [creatorId], references: [id])
+  items     OrderItem[]
+  revisions OrderRevision[]
+  payments  Payment[]
+
+  @@map("orders")
+}
+
+// Order Items Table
+model OrderItem {
+  id       String @id @default(cuid())
+  orderId  String
+  productId String
+  quantity Int
+  unitPrice Float
+  notes    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+// Order Revisions Table
+model OrderRevision {
+  id          String         @id @default(cuid())
+  orderId     String
+  requestedBy String
+  reviewedBy  String?
+  description String
+  status      RevisionStatus @default(PENDING)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  // Relations
+  order     Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  requester User  @relation("RevisionRequester", fields: [requestedBy], references: [id])
+  reviewer  User? @relation("RevisionReviewer", fields: [reviewedBy], references: [id])
+
+  @@map("order_revisions")
+}
+
+// Payments Table
+model Payment {
+  id             String      @id @default(cuid())
+  orderId        String
+  processedBy    String
+  paymentType    PaymentType
+  amountPaid     Float
+  changeGiven    Float       @default(0)
+  status         String      @default("COMPLETED")
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  // Relations
+  order     Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  processor User  @relation(fields: [processedBy], references: [id])
+
+  @@map("payments")
+}
+
+// Chef Category Permissions (Şeflerin hangi kategorilerde sipariş alabileceği)
+model ChefCategoryPermission {
+  id         String @id @default(cuid())
+  userId     String
+  categoryId String
+  createdAt  DateTime @default(now())
+
+  // Relations
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, categoryId])
+  @@map("chef_category_permissions")
+}
+
+// Daily Reports Table (for caching/performance)
+model DailyReport {
+  id           String   @id @default(cuid())
+  date         DateTime @unique
+  totalSales   Float    @default(0)
+  orderCount   Int      @default(0)
+  sectionStats Json?    // JSON field for section-wise statistics
+  productStats Json?    // JSON field for product-wise statistics
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("daily_reports")
+}
